@@ -4,7 +4,7 @@
 
 ```mermaid
 graph TD
-    A[WhatsApp Business API] --> B[Webhook Receiver - Express.js]
+    A[Twilio WhatsApp API] --> B[Webhook Receiver - Express.js]
     B --> C[Audio Processing Service]
     C --> D[Google Cloud Speech-to-Text]
     C --> E[AWS Polly TTS]
@@ -25,6 +25,7 @@ graph TD
         F
         I
         L[File Storage Service]
+        O[Twilio Client Service]
     end
     
     subgraph "Data Layer"
@@ -44,6 +45,8 @@ graph TD
     K --> B
     C --> L
     L --> M
+    B --> O
+    O --> A
 ```
 
 ## 2. Descrição das Tecnologias
@@ -60,19 +63,22 @@ graph TD
 
 * **TTS/STT**: Google Cloud Speech-to-Text, AWS Polly, Mozilla TTS (fallback)
 
-* **WhatsApp Integration**: WhatsApp Business API, webhooks
+* **WhatsApp Integration**: Twilio WhatsApp API, Twilio SDK\@4, webhooks
 
-* **Security**: bcrypt, jsonwebtoken, helmet, rate-limiting
+* **Security**: bcrypt, jsonwebtoken, helmet, rate-limiting, Twilio signature validation
+
+* **Twilio Dependencies**: twilio\@4, express-validator, multer (para upload de mídia)
 
 ## 3. Definições de Rotas
 
 | Rota                   | Propósito                                 |
 | ---------------------- | ----------------------------------------- |
-| /webhook/whatsapp      | Receber mensagens do WhatsApp via webhook |
+| /webhook/twilio        | Receber mensagens do Twilio WhatsApp via webhook |
 | /api/audio/process     | Processar arquivos de áudio (STT)         |
 | /api/audio/synthesize  | Converter texto para áudio (TTS)          |
 | /api/config/tts        | Configurar preferências de TTS            |
 | /api/config/stt        | Configurar preferências de STT            |
+| /api/config/twilio     | Configurar credenciais e webhooks Twilio |
 | /api/dashboard/metrics | Obter métricas de uso do sistema          |
 | /api/auth/login        | Autenticação de administradores           |
 | /api/users/preferences | Gerenciar preferências de usuário         |
@@ -83,20 +89,22 @@ graph TD
 
 ### 4.1 APIs Principais
 
-**Webhook do WhatsApp**
+**Webhook do Twilio WhatsApp**
 
 ```
-POST /webhook/whatsapp
+POST /webhook/twilio
 ```
 
 Request:
 
 | Nome do Parâmetro                  | Tipo   | Obrigatório | Descrição                                      |
 | ---------------------------------- | ------ | ----------- | ---------------------------------------------- |
-| object                             | string | true        | Tipo de objeto ("whatsapp\_business\_account") |
-| entry                              | array  | true        | Array de entradas com dados da mensagem        |
-| entry\[].changes                   | array  | true        | Mudanças na conversa                           |
-| entry\[].changes\[].value.messages | array  | false       | Mensagens recebidas                            |
+| MessageSid                         | string | true        | ID único da mensagem no Twilio                |
+| From                               | string | true        | Número do remetente (formato: whatsapp:+5511999999999) |
+| To                                 | string | true        | Número do destinatário                         |
+| Body                               | string | false       | Conteúdo da mensagem de texto                  |
+| MediaUrl0                          | string | false       | URL do arquivo de mídia (áudio, imagem, etc.) |
+| MediaContentType0                  | string | false       | Tipo de conteúdo da mídia                      |
 
 Response:
 
@@ -127,13 +135,16 @@ Response:
 | confidence        | number | Nível de confiança da transcrição |
 | processing\_time  | number | Tempo de processamento em ms      |
 
-Exemplo:
+Exemplo Request Twilio:
 
 ```json
 {
-  "audio_url": "https://example.com/audio.ogg",
-  "language": "pt-BR",
-  "user_id": "user_123"
+  "MessageSid": "SM1234567890abcdef",
+  "From": "whatsapp:+5511999999999",
+  "To": "whatsapp:+5511888888888",
+  "Body": "Olá, preciso de ajuda",
+  "MediaUrl0": "https://api.twilio.com/2010-04-01/Accounts/AC.../Messages/SM.../Media/ME...",
+  "MediaContentType0": "audio/ogg"
 }
 ```
 
@@ -158,14 +169,37 @@ Response:
 | ----------------- | ------ | ------------------------------ |
 | audio\_url        | string | URL do arquivo de áudio gerado |
 | duration          | number | Duração do áudio em segundos   |
-| file\_size        | number | Tamanho do arquivo em bytes    |
+| file_size        | number | Tamanho do arquivo em bytes    |
+
+**Configuração do Twilio**
+
+```
+POST /api/config/twilio
+```
+
+Request:
+
+| Nome do Parâmetro | Tipo   | Obrigatório | Descrição                           |
+| ----------------- | ------ | ----------- | ----------------------------------- |
+| account_sid       | string | true        | Account SID do Twilio               |
+| auth_token        | string | true        | Auth Token do Twilio                |
+| phone_number      | string | true        | Número WhatsApp Business registrado |
+| webhook_url       | string | true        | URL do webhook para receber mensagens |
+
+Response:
+
+| Nome do Parâmetro | Tipo    | Descrição                      |
+| ----------------- | ------- | ------------------------------ |
+| status            | boolean | Status da configuração         |
+| webhook_configured| boolean | Se o webhook foi configurado   |
+| phone_verified    | boolean | Se o número foi verificado     |
 
 ## 5. Arquitetura do Servidor
 
 ```mermaid
 graph TD
-    A[WhatsApp Webhook] --> B[Express Router]
-    B --> C[Authentication Middleware]
+    A[Twilio Webhook] --> B[Express Router]
+    B --> C[Twilio Signature Validation]
     C --> D[Rate Limiting Middleware]
     D --> E[Audio Processing Controller]
     E --> F[STT Service Layer]
@@ -178,6 +212,8 @@ graph TD
     L --> M[Supabase Client]
     E --> N[Cache Service]
     N --> O[Redis Client]
+    E --> P[Twilio Client Service]
+    P --> Q[Twilio API]
     
     subgraph "Servidor Node.js"
         B
@@ -188,6 +224,7 @@ graph TD
         I
         L
         N
+        P
     end
 ```
 
@@ -202,6 +239,7 @@ erDiagram
     CONVERSATIONS ||--o{ MESSAGES : contains
     MESSAGES ||--o{ AUDIO_PROCESSING : generates
     AUDIO_PROCESSING ||--o{ TTS_CACHE : creates
+    TWILIO_CONFIG ||--|| USERS : configured_by
     
     USERS {
         uuid id PK
@@ -264,6 +302,17 @@ erDiagram
         float duration
         timestamp created_at
         timestamp expires_at
+    }
+    
+    TWILIO_CONFIG {
+        uuid id PK
+        string account_sid
+        string auth_token_hash
+        string phone_number
+        string webhook_url
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
     }
 ```
 
@@ -415,6 +464,31 @@ CREATE INDEX idx_tts_cache_expires_at ON tts_cache(expires_at);
 GRANT SELECT ON tts_cache TO anon;
 GRANT ALL PRIVILEGES ON tts_cache TO authenticated;
 
+**Tabela de Configuração Twilio**
+
+```sql
+-- Criar tabela de configuração Twilio
+CREATE TABLE twilio_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_sid VARCHAR(100) UNIQUE NOT NULL,
+    auth_token_hash VARCHAR(255) NOT NULL,
+    phone_number VARCHAR(20) UNIQUE NOT NULL,
+    webhook_url VARCHAR(500) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Criar índices
+CREATE INDEX idx_twilio_config_account_sid ON twilio_config(account_sid);
+CREATE INDEX idx_twilio_config_phone ON twilio_config(phone_number);
+CREATE INDEX idx_twilio_config_active ON twilio_config(is_active);
+
+-- Políticas de segurança
+GRANT SELECT ON twilio_config TO authenticated;
+GRANT INSERT, UPDATE ON twilio_config TO authenticated;
+```
+
 -- Dados iniciais
 INSERT INTO users (phone_number, name, role) VALUES 
 ('+5511999999999', 'Dr. João Silva', 'doctor'),
@@ -423,5 +497,9 @@ INSERT INTO users (phone_number, name, role) VALUES
 
 INSERT INTO user_preferences (user_id, preferred_voice, speech_speed, auto_tts_enabled)
 SELECT id, 'pt-BR-Wavenet-A', 1.0, true FROM users WHERE role IN ('doctor', 'nurse', 'admin');
+
+-- Configuração inicial do Twilio (exemplo)
+INSERT INTO twilio_config (account_sid, auth_token_hash, phone_number, webhook_url)
+VALUES ('ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', '$2b$10$hashedtoken...', '+5511888888888', 'https://yourdomain.com/webhook/twilio');
 ```
 

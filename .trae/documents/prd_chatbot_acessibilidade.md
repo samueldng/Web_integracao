@@ -2,7 +2,7 @@
 
 ## 1. Visão Geral do Produto
 
-Sistema de integração de funcionalidades de acessibilidade em chatbot WhatsApp existente para ambiente médico de nefrologia, utilizando Node.js para processamento de áudio, conversão texto-para-fala (TTS) e reconhecimento de fala (STT).
+Sistema de integração de funcionalidades de acessibilidade em chatbot WhatsApp para ambiente médico de nefrologia, utilizando Twilio WhatsApp API e Node.js para processamento de áudio, conversão texto-para-fala (TTS) e reconhecimento de fala (STT).
 
 O produto visa tornar a comunicação médica mais acessível para pacientes com deficiências visuais ou auditivas, permitindo interação por voz e áudio em consultas virtuais de nefrologia.
 
@@ -22,7 +22,7 @@ Objetivo: Aumentar a acessibilidade e inclusão digital em serviços de saúde, 
 
 Nosso sistema de acessibilidade consiste nas seguintes páginas principais:
 
-1. **Interface de Chat WhatsApp**: processamento de mensagens, detecção de áudio, botão de acessibilidade
+1. **Interface de Chat WhatsApp via Twilio**: processamento de mensagens, detecção de áudio, botão de acessibilidade
 2. **Painel de Configuração**: configuração de APIs TTS/STT, preferências de voz, configurações de segurança
 3. **Dashboard de Monitoramento**: estatísticas de uso, logs de conversão, métricas de performance
 4. **Página de Ajuda**: tutorial de uso, comandos de voz, troubleshooting
@@ -31,9 +31,9 @@ Nosso sistema de acessibilidade consiste nas seguintes páginas principais:
 
 | Nome da Página | Nome do Módulo | Descrição da Funcionalidade |
 |----------------|----------------|-----------------------------|
-| Interface de Chat WhatsApp | Processamento de Áudio | Detectar mensagens de áudio recebidas, extrair e processar arquivo de áudio, converter áudio para texto usando STT |
-| Interface de Chat WhatsApp | Resposta em Áudio | Converter texto de resposta para áudio usando TTS, enviar áudio de volta para o usuário, suportar múltiplas vozes e idiomas |
-| Interface de Chat WhatsApp | Botão de Acessibilidade | Adicionar botão inline no chat, ler histórico da conversa em voz alta, controles de reprodução (pausar, acelerar, repetir) |
+| Interface de Chat WhatsApp via Twilio | Processamento de Áudio | Detectar mensagens de áudio via webhook Twilio, extrair MediaUrl e processar arquivo de áudio, converter áudio para texto usando STT |
+| Interface de Chat WhatsApp via Twilio | Resposta em Áudio | Converter texto de resposta para áudio usando TTS, enviar áudio via Twilio API, suportar múltiplas vozes e idiomas |
+| Interface de Chat WhatsApp via Twilio | Botão de Acessibilidade | Implementar botão via Twilio Interactive Messages, ler histórico da conversa em voz alta, controles de reprodução |
 | Painel de Configuração | Configuração de APIs | Configurar credenciais Google Cloud Speech-to-Text, configurar AWS Polly, definir fallbacks para APIs gratuitas |
 | Painel de Configuração | Preferências de Voz | Selecionar vozes disponíveis, ajustar velocidade e tom, configurar idioma padrão |
 | Dashboard de Monitoramento | Métricas de Uso | Exibir estatísticas de conversões TTS/STT, monitorar tempo de resposta, rastrear custos de API |
@@ -44,11 +44,12 @@ Nosso sistema de acessibilidade consiste nas seguintes páginas principais:
 
 **Fluxo do Paciente:**
 1. Paciente envia mensagem de áudio via WhatsApp
-2. Sistema detecta áudio e processa via STT
-3. Chatbot processa texto e gera resposta
-4. Sistema converte resposta para áudio via TTS
-5. Áudio é enviado de volta ao paciente
-6. Paciente pode usar botão de acessibilidade para ouvir histórico
+2. Twilio recebe mensagem e envia webhook para sistema
+3. Sistema detecta MediaUrl do áudio e processa via STT
+4. Chatbot processa texto e gera resposta
+5. Sistema converte resposta para áudio via TTS
+6. Áudio é enviado via Twilio API de volta ao paciente
+7. Paciente pode usar botão de acessibilidade (Twilio Interactive Messages) para ouvir histórico
 
 **Fluxo do Profissional de Saúde:**
 1. Médico acessa painel de configuração
@@ -59,17 +60,18 @@ Nosso sistema de acessibilidade consiste nas seguintes páginas principais:
 
 ```mermaid
 graph TD
-    A[WhatsApp Chat] --> B[Detecção de Áudio]
-    B --> C[Processamento STT]
-    C --> D[Processamento do Chatbot]
-    D --> E[Conversão TTS]
-    E --> F[Envio de Áudio]
-    F --> A
-    A --> G[Botão de Acessibilidade]
-    G --> H[Leitura do Histórico]
-    H --> A
-    I[Painel de Configuração] --> J[Dashboard de Monitoramento]
-    J --> K[Página de Ajuda]
+    A[WhatsApp Chat] --> B[Twilio Webhook]
+    B --> C[Detecção de MediaUrl]
+    C --> D[Processamento STT]
+    D --> E[Processamento do Chatbot]
+    E --> F[Conversão TTS]
+    F --> G[Twilio API - Envio de Áudio]
+    G --> A
+    A --> H[Twilio Interactive Messages]
+    H --> I[Leitura do Histórico]
+    I --> A
+    J[Painel de Configuração] --> K[Dashboard de Monitoramento]
+    K --> L[Página de Ajuda]
 ```
 
 ## 4. Design da Interface do Usuário
